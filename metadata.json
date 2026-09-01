@@ -1,0 +1,6 @@
+{
+  "name": "CCULB Resort & Convention Hall PMS",
+  "description": "Enterprise Property Management System for CCULB Resort & Convention Hall covering rooms, reservations, front desk, housekeeping, billing, convention halls, restaurant, and analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,275 @@
+import React, { useState, useEffect } from 'react';
+import { X, LogOut, CheckCircle2, Receipt, CreditCard, Printer, AlertTriangle, ArrowRight } from 'lucide-react';
+import { pmsService } from '../../services/pmsService';
+import { Stay, Folio, Invoice, PaymentMethod } from '../../types/pms';
+
+interface QuickCheckOutDrawerProps {
+  isOpen: boolean;
+  onClose: () => void;
+  stayId: string;
+  onPrintInvoice: (invoice: Invoice) => void;
+  onSuccess?: () => void;
+}
+
+export const QuickCheckOutDrawer: React.FC<QuickCheckOutDrawerProps> = ({
+  isOpen,
+  onClose,
+  stayId,
+  onPrintInvoice,
+  onSuccess
+}) => {
+  const db = pmsService.getState();
+  const stay = db.stays.find(s => s.id === stayId);
+  const folio = stay ? db.folios.find(f => f.id === stay.folioId) : undefined;
+
+  const [settleAmount, setSettleAmount] = useState<number>(0);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Credit Card');
+  const [paymentRef, setPaymentRef] = useState<string>('');
+  const [error, setError] = useState<string>('');
+  const [showPaymentInput, setShowPaymentInput] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (isOpen && folio) {
+      setError('');
+      setSettleAmount(Math.max(0, folio.balance));
+      setShowPaymentInput(folio.balance > 0);
+      setPaymentRef('Counter POS Settlement');
+    }
+  }, [isOpen, folio]);
+
+  if (!isOpen || !stay || !folio) return null;
+
+  const handleCheckout = () => {
+    setError('');
+
+    // If balance remains and payment is provided
+    let settlePayment = undefined;
+    if (folio.balance > 0) {
+      if (settleAmount > 0) {
+        settlePayment = {
+          amount: settleAmount,
+          method: paymentMethod,
+          reference: paymentRef || 'Check-out Counter Settlement'
+        };
+      }
+    }
+
+    try {
+      const { invoice } = pmsService.checkOutStay({
+        stayId: stay.id,
+        settlePayment
+      });
+
+      onPrintInvoice(invoice);
+      onSuccess?.();
+      onClose();
+    } catch (err: any) {
+      setError(err.message || 'Checkout failed. Please verify folio balance.');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex justify-end animate-in fade-in duration-150">
+      <div className="bg-slate-900 border-l border-slate-800 w-full max-w-lg h-full flex flex-col shadow-2xl text-xs text-slate-200">
+        {/* Header */}
+        <div className="p-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 rounded bg-rose-500/20 text-rose-400 font-bold flex items-center justify-center border border-rose-500/30">
+              <LogOut className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-100">Front Desk Check-Out</h3>
+              <p className="text-[11px] text-slate-400">Folio Settlement & Room Status Departure</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 text-slate-400 hover:text-slate-100 rounded hover:bg-slate-800"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {error && (
+            <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded text-rose-300">
+              {error}
+            </div>
+          )}
+
+          {/* Stay Info Card */}
+          <div className="bg-slate-950/70 p-3.5 rounded-lg border border-slate-800 space-y-2">
+            <div className="flex justify-between items-start">
+              <div>
+                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Guest Information</span>
+                <h4 className="text-sm font-bold text-slate-100 mt-0.5">{stay.guestName}</h4>
+                <p className="text-slate-400 text-[11px]">Stay Record: <span className="font-mono text-slate-300">{stay.stayNumber}</span></p>
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Room Allocation</span>
+                <p className="text-base font-mono font-bold text-amber-400 mt-0.5">Room {stay.roomNumber}</p>
+                <p className="text-slate-400 text-[11px]">{stay.roomTypeName}</p>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-800/80 flex justify-between text-[11px] text-slate-400">
+              <span>Check-in: {stay.checkInAt ? stay.checkInAt.split('T')[0] : 'N/A'}</span>
+              <span>Expected Out: {stay.expectedCheckOutAt ? stay.expectedCheckOutAt.split('T')[0] : 'N/A'}</span>
+            </div>
+          </div>
+
+          {/* Itemized Folio Summary */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-slate-300 flex items-center space-x-1.5">
+                <Receipt className="w-3.5 h-3.5 text-amber-400" />
+                <span>Itemized Folio ({folio.folioNumber})</span>
+              </span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-semibold ${
+                folio.balance <= 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
+              }`}>
+                {folio.balance <= 0 ? 'Fully Paid' : `Due: ৳${folio.balance.toLocaleString()}`}
+              </span>
+            </div>
+
+            <div className="bg-slate-950 rounded border border-slate-800 overflow-hidden">
+              <table className="w-full text-left text-[11px]">
+                <thead className="bg-slate-900 text-slate-400 border-b border-slate-800">
+                  <tr>
+                    <th className="py-1.5 px-3">Description</th>
+                    <th className="py-1.5 px-2 text-right">Qty</th>
+                    <th className="py-1.5 px-3 text-right">Total (৳)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {folio.items.map(it => (
+                    <tr key={it.id}>
+                      <td className="py-2 px-3 text-slate-300">
+                        <span className="font-medium block text-slate-200">{it.description}</span>
+                        <span className="text-[10px] text-slate-500">{it.type}</span>
+                      </td>
+                      <td className="py-2 px-2 text-right font-mono text-slate-400">{it.quantity}</td>
+                      <td className="py-2 px-3 text-right font-mono text-slate-200 font-semibold">
+                        ৳{it.total.toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* Financial Totals */}
+              <div className="p-3 bg-slate-900/90 border-t border-slate-800 space-y-1.5 text-[11px]">
+                <div className="flex justify-between text-slate-400">
+                  <span>Subtotal:</span>
+                  <span className="font-mono">৳{folio.subtotal.toLocaleString()}</span>
+                </div>
+                {folio.discountTotal > 0 && (
+                  <div className="flex justify-between text-rose-400">
+                    <span>Discount:</span>
+                    <span className="font-mono">-৳{folio.discountTotal.toLocaleString()}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-slate-400">
+                  <span>Service Charge (10%):</span>
+                  <span className="font-mono">৳{folio.serviceChargeTotal.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-slate-400">
+                  <span>VAT / Tax (15%):</span>
+                  <span className="font-mono">৳{folio.taxTotal.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between font-bold text-slate-100 border-t border-slate-800 pt-1">
+                  <span>Grand Total:</span>
+                  <span className="font-mono text-amber-400">৳{folio.grandTotal.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-emerald-400">
+                  <span>Total Paid / Advances:</span>
+                  <span className="font-mono">৳{folio.paidTotal.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between font-bold text-sm bg-slate-950 p-2 rounded border border-slate-800">
+                  <span>Outstanding Balance:</span>
+                  <span className={`font-mono ${folio.balance <= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    ৳{folio.balance.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Payment Settlement if Balance Due */}
+          {folio.balance > 0 && (
+            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg space-y-2">
+              <div className="flex items-center space-x-2 text-amber-300 font-bold">
+                <CreditCard className="w-4 h-4" />
+                <span>Receive Balance Settlement Before Checkout:</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <span className="text-[10px] text-slate-400 block mb-0.5">Pay Amount:</span>
+                  <input
+                    type="number"
+                    value={settleAmount}
+                    onChange={(e) => setSettleAmount(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-slate-100 font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 block mb-0.5">Method:</span>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-slate-100"
+                  >
+                    <option value="Credit Card">Credit Card (POS)</option>
+                    <option value="Cash">Cash at Counter</option>
+                    <option value="bKash">bKash</option>
+                    <option value="Nagad">Nagad</option>
+                    <option value="Bank Transfer">Bank Transfer</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 block mb-0.5">Auth / Receipt Reference:</span>
+                <input
+                  type="text"
+                  value={paymentRef}
+                  onChange={(e) => setPaymentRef(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-slate-100 text-xs"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Operational Departure Note */}
+          <div className="p-3 bg-slate-950 border border-slate-800 rounded text-[11px] text-slate-400 flex items-start space-x-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-semibold text-slate-300">Automated Housekeeping Dispatch:</span>
+              <p className="mt-0.5 leading-relaxed">
+                Confirming checkout will instantly mark <span className="text-amber-300 font-medium">Room {stay.roomNumber}</span> as <span className="text-rose-300 font-semibold">Dirty</span> and dispatch a turnover task to the housekeeping board.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium rounded text-xs transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleCheckout}
+            className="flex items-center space-x-1.5 px-5 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded text-xs transition-colors shadow-lg"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>Confirm Check-Out & Generate Invoice</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
