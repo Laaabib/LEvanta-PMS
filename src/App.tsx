@@ -32,6 +32,10 @@ import { ConventionEventsView } from './views/ConventionEventsView';
 import { ConventionCalendarView } from './views/ConventionCalendarView';
 import { ConventionPackagesView } from './views/ConventionPackagesView';
 import { RestaurantView } from './views/RestaurantView';
+import { InventoryView } from './views/InventoryView';
+import { MenuManagementView } from './views/MenuManagementView';
+import { RecreationAmenitiesView } from './views/RecreationAmenitiesView';
+import { AccountingLedgerView } from './views/AccountingLedgerView';
 import { BillingFoliosView } from './views/BillingFoliosView';
 import { BillingPaymentsView } from './views/BillingPaymentsView';
 import { BillingInvoicesView } from './views/BillingInvoicesView';
@@ -69,7 +73,7 @@ export default function App() {
   // Print Document State
   const [printModal, setPrintModal] = useState<{
     isOpen: boolean;
-    type: 'invoice' | 'registration-card' | 'banquet-contract';
+    type: any;
     data: any;
   }>({
     isOpen: false,
@@ -215,6 +219,14 @@ export default function App() {
     });
   }, []);
 
+  const handlePrintDocument = useCallback((type: any, data: any) => {
+    setPrintModal({
+      isOpen: true,
+      type: type || 'invoice',
+      data: data
+    });
+  }, []);
+
   return (
     <div className="flex h-screen bg-[#F3F4F6] text-gray-900 font-sans overflow-hidden antialiased select-none">
       {/* 1. Left Enterprise Navigation Sidebar */}
@@ -253,7 +265,7 @@ export default function App() {
               />
             )}
 
-            {activeRoute === 'front-desk' && (
+            {(activeRoute === 'front-desk' || activeRoute === 'front-office' || activeRoute === 'front-office-group') && (
               <FrontDeskView
                 onOpenCheckIn={openCheckIn}
                 onOpenCheckout={openCheckout}
@@ -325,8 +337,33 @@ export default function App() {
               <ConventionPackagesView />
             )}
 
-            {activeRoute === 'restaurant' && (
-              <RestaurantView />
+            {(activeRoute === 'restaurant' || activeRoute === 'restaurant-group') && (
+              <RestaurantView onPrintInvoice={handlePrintInvoice} />
+            )}
+
+            {(activeRoute === 'inventory' || activeRoute.startsWith('inventory-')) && (
+              <InventoryView
+                initialTab={activeRoute.startsWith('inventory-') ? activeRoute.replace('inventory-', '') : 'dashboard'}
+                onPrintDocument={(type, data) => handlePrintDocument(type as any, data)}
+              />
+            )}
+
+            {(activeRoute === 'menu' || activeRoute.startsWith('menu-')) && (
+              <MenuManagementView
+                initialTab={activeRoute.startsWith('menu-') ? activeRoute.replace('menu-', '') : 'dashboard'}
+              />
+            )}
+
+            {activeRoute === 'recreation' && (
+              <RecreationAmenitiesView onPrintInvoice={handlePrintInvoice} />
+            )}
+
+            {(activeRoute === 'accounting-gl' ||
+              activeRoute === 'accounting-jv' ||
+              activeRoute === 'accounting-city-ledger' ||
+              activeRoute === 'accounting-sync' ||
+              activeRoute === 'accounting-group') && (
+              <AccountingLedgerView />
             )}
 
             {activeRoute === 'billing-folios' && (
@@ -413,8 +450,10 @@ export default function App() {
         isOpen={isCheckOutOpen}
         onClose={() => setIsCheckOutOpen(false)}
         stayId={checkOutStayId}
+        onPrintInvoice={handlePrintInvoice}
+        onPrintCheckoutForm={handlePrintCheckoutForm}
+        onPrintFolio={handlePrintFolio}
         onSuccess={() => {
-          setIsCheckOutOpen(false);
           setActiveRoute('front-desk');
         }}
       />

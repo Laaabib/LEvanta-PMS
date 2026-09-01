@@ -6,8 +6,10 @@ import {
   HousekeepingTask, MaintenanceTicket, EventBooking, RestaurantOrder,
   AuditLog, OperationalStatus, HousekeepingStatus, Room, Guest, UserRoleName,
   OperationalAlert, RoomType, Package, MenuItem, EventClient, NightAuditRecord,
-  PermissionKey, Hall, User
+  PermissionKey, Hall, User, GLAccount, JournalVoucher, JournalEntryItem,
+  CityLedgerAccount, DepartmentalSyncStatus, ActivityAmenityCharge
 } from '../types/pms';
+import { inventoryMenuService } from './inventoryMenuService';
 import * as XLSX from 'xlsx';
 
 // Reactive listeners
@@ -30,6 +32,14 @@ export const pmsService = {
 
   getState(): PmsDatabaseState {
     return state;
+  },
+
+  getDatabase(): PmsDatabaseState {
+    return state;
+  },
+
+  notify() {
+    notify();
   },
 
   resetToSeed() {
@@ -918,6 +928,14 @@ export const pmsService = {
     };
 
     state.restaurantOrders.unshift(newOrder);
+    
+    // Automatically trigger recipe ingredient stock consumption, stock ledger, and GL cost posting
+    try {
+      inventoryMenuService.consumeIngredientsForRestaurantOrder(newOrder);
+    } catch (err) {
+      console.warn('Auto stock consumption notice:', err);
+    }
+
     this.logAudit('Created Restaurant Order', 'Order', newOrder.id, undefined, `${orderNumber} (৳${total}) - ${newOrder.orderType} for ${params.guestName || params.roomNumber || params.tableNumber || 'Walk-in'}`);
     this.addAlert('info', `POS Order ${orderNumber}`, `${newOrder.orderType.toUpperCase()} order created for ৳${total}. ${params.postToFolio ? 'Billed to Room ' + params.roomNumber : 'Paid at counter'}.`, 'View POS', 'restaurant');
     notify();
@@ -2048,5 +2066,310 @@ export const pmsService = {
       console.log(`[NightAudit] Auto 05:00 AM trigger conditions met. Running Night Audit for ${currentBizDate}...`);
       this.runNightAudit(false, `Automated scheduled trigger executed at ${currentTimeStr}.`);
     }
+  },
+
+  // ----------------------------------------------------
+  // ACTIVITIES & AMENITIES SERVICES
+  // ----------------------------------------------------
+  getActivityCharges(): ActivityAmenityCharge[] {
+    return state.activityCharges || [];
+  },
+
+  createActivityCharge(data: {
+    category: 'Activity' | 'Amenity';
+    serviceType: ActivityAmenityCharge['serviceType'];
+    guestOrCustomerName: string;
+    roomNumber?: string;
+    stayId?: string;
+    folioId?: string;
+    quantity: number;
+    unitPrice: number;
+    paymentType: ActivityAmenityCharge['paymentType'];
+    notes?: string;
+  }): { success: boolean; charge: ActivityAmenityCharge; message: string } {
+    const subtotal = data.quantity * data.unitPrice;
+    const taxRate = state.settings.taxRatePercent || 15;
+    const tax = Math.round(subtotal * (taxRate / 100));
+    const grandTotal = subtotal + tax;
+
+    const chargeNumber = `ACT-${new Date().getFullYear()}-${String((state.activityCharges?.length || 0) + 1).padStart(4, '0')}`;
+    const settlementStatus: ActivityAmenityCharge['settlementStatus'] =
+      data.paymentType === 'Billed to Room Folio' ? 'Posted to Folio' : 'Settled Direct';
+
+    const newCharge: ActivityAmenityCharge = {
+      id: `act-${Date.now()}`,
+      chargeNumber,
+      category: data.category,
+      serviceType: data.serviceType,
+      guestOrCustomerName: data.guestOrCustomerName,
+      roomNumber: data.roomNumber,
+      stayId: data.stayId,
+      folioId: data.folioId,
+      quantity: data.quantity,
+      unitPrice: data.unitPrice,
+      subtotal,
+      tax,
+      grandTotal,
+      paymentType: data.paymentType,
+      settlementStatus,
+      notes: data.notes,
+      createdAt: new Date().toISOString(),
+      createdBy: state.currentUser.name
+    };
+
+    if (!state.activityCharges) state.activityCharges = [];
+    state.activityCharges.unshift(newCharge);
+
+    // If billed to room folio, add as Folio Item
+    if (data.paymentType === 'Billed to Room Folio' && data.folioId) {
+      const folio = state.folios.find(f => f.id === data.folioId);
+      if (folio) {
+        const item: FolioItem = {
+          id: `fi-${Date.now()}`,
+          folioId: folio.id,
+          type: data.category === 'Activity' ? 'Amenity' : 'Spa/Wellness',
+          description: `${data.serviceType} (x${data.quantity}) - ${data.guestOrCustomerName}`,
+          quantity: data.quantity,
+          unitPrice: data.unitPrice,
+          discount: 0,
+          tax,
+          total: grandTotal,
+          postedBy: `${state.currentUser.name} (${data.category})`,
+          createdAt: new Date().toISOString()
+        };
+        folio.items.push(item);
+        folio.subtotal += subtotal;
+        folio.taxTotal += tax;
+        folio.grandTotal += grandTotal;
+        folio.balance = folio.grandTotal - folio.paidTotal;
+      }
+    }
+
+    // Auto-generate double-entry Journal Voucher
+    const debitAccountCode = data.paymentType === 'Billed to Room Folio' ? '1100' : '1020';
+    const debitAccountName = data.paymentType === 'Billed to Room Folio' ? 'Guest Ledger (In-House Active Receivables)' : 'Front Desk & Outlet Cashier Drawers';
+    const creditRevenueCode = data.category === 'Activity' ? '4050' : '4060';
+    const creditRevenueName = data.category === 'Activity' ? 'Resort Activities & Sports Facilities' : 'Spa & Wellness Center Revenue';
+
+    this.createJournalVoucher({
+      date: state.settings.currentBusinessDate || new Date().toISOString().split('T')[0],
+      sourceModule: data.category === 'Activity' ? 'Activities' : 'Amenities',
+      sourceReference: chargeNumber,
+      narration: `${data.serviceType} (Qty: ${data.quantity}) for ${data.guestOrCustomerName} ${data.roomNumber ? `[Room ${data.roomNumber}]` : ''} - Paid via ${data.paymentType}`,
+      entries: [
+        { id: `jve-${Date.now()}-1`, accountCode: debitAccountCode, accountName: debitAccountName, debit: grandTotal, credit: 0, memo: `${data.paymentType} charge` },
+        { id: `jve-${Date.now()}-2`, accountCode: creditRevenueCode, accountName: creditRevenueName, debit: 0, credit: subtotal, memo: `${data.serviceType} revenue` },
+        { id: `jve-${Date.now()}-3`, accountCode: '2100', accountName: 'VAT / Government Tax Payable (15%)', debit: 0, credit: tax, memo: `15% VAT on ${data.serviceType}` }
+      ]
+    });
+
+    this.logAudit('Activity Charge Created', 'Folio', newCharge.id, chargeNumber, `${data.serviceType} ৳${grandTotal.toLocaleString()} for ${data.guestOrCustomerName}`);
+    notify();
+
+    return {
+      success: true,
+      charge: newCharge,
+      message: `Charge ${chargeNumber} of ৳${grandTotal.toLocaleString()} successfully recorded (${data.paymentType}).`
+    };
+  },
+
+  // ----------------------------------------------------
+  // ACCOUNTING, GENERAL LEDGER & CITY LEDGER SERVICES
+  // ----------------------------------------------------
+  getGLAccounts(): GLAccount[] {
+    return state.glAccounts || [];
+  },
+
+  createGLAccount(accountData: Omit<GLAccount, 'balance' | 'isSystem'> & { balance?: number; isSystem?: boolean }): { success: boolean; message: string } {
+    if (!state.glAccounts) state.glAccounts = [];
+    if (state.glAccounts.some(a => a.code === accountData.code)) {
+      return { success: false, message: `Account code ${accountData.code} already exists in Chart of Accounts.` };
+    }
+
+    const newAcc: GLAccount = {
+      code: accountData.code,
+      name: accountData.name,
+      type: accountData.type,
+      category: accountData.category,
+      description: accountData.description,
+      balance: accountData.balance || 0,
+      isSystem: accountData.isSystem || false
+    };
+
+    state.glAccounts.push(newAcc);
+    state.glAccounts.sort((a, b) => a.code.localeCompare(b.code));
+    this.logAudit('GL Account Created', 'SystemSettings', newAcc.code, newAcc.name, `New ${newAcc.type} account added to Chart of Accounts`);
+    notify();
+
+    return { success: true, message: `Account ${newAcc.code} - ${newAcc.name} created successfully.` };
+  },
+
+  updateGLAccount(code: string, updates: Partial<GLAccount>): { success: boolean; message: string } {
+    const acc = state.glAccounts?.find(a => a.code === code);
+    if (!acc) return { success: false, message: 'GL Account not found.' };
+
+    Object.assign(acc, updates);
+    this.logAudit('GL Account Updated', 'SystemSettings', code, acc.name, `Account parameters updated`);
+    notify();
+    return { success: true, message: `GL Account ${code} updated.` };
+  },
+
+  getJournalVouchers(): JournalVoucher[] {
+    return state.journalVouchers || [];
+  },
+
+  createJournalVoucher(data: {
+    date: string;
+    sourceModule: JournalVoucher['sourceModule'];
+    sourceReference: string;
+    narration: string;
+    entries: JournalEntryItem[];
+  }): { success: boolean; voucher?: JournalVoucher; message: string } {
+    const totalDebit = data.entries.reduce((sum, e) => sum + (e.debit || 0), 0);
+    const totalCredit = data.entries.reduce((sum, e) => sum + (e.credit || 0), 0);
+
+    if (totalDebit !== totalCredit) {
+      return {
+        success: false,
+        message: `Voucher is out of balance! Total Debits (৳${totalDebit.toLocaleString()}) must equal Total Credits (৳${totalCredit.toLocaleString()}). Difference: ৳${Math.abs(totalDebit - totalCredit).toLocaleString()}`
+      };
+    }
+
+    const voucherNumber = `JV-${new Date().getFullYear()}-${String((state.journalVouchers?.length || 0) + 1).padStart(4, '0')}`;
+    const voucher: JournalVoucher = {
+      id: `jv-${Date.now()}`,
+      voucherNumber,
+      date: data.date,
+      sourceModule: data.sourceModule,
+      sourceReference: data.sourceReference,
+      narration: data.narration,
+      entries: data.entries,
+      totalDebit,
+      totalCredit,
+      isBalanced: true,
+      postedBy: state.currentUser?.name || 'Accounts Engine',
+      postedAt: new Date().toISOString()
+    };
+
+    if (!state.journalVouchers) state.journalVouchers = [];
+    state.journalVouchers.unshift(voucher);
+
+    // Update GL account balances
+    data.entries.forEach(entry => {
+      const gl = state.glAccounts?.find(a => a.code === entry.accountCode);
+      if (gl) {
+        // Asset & Expense normal balance: Debit increases (+), Credit decreases (-)
+        // Liability, Equity & Revenue normal balance: Credit increases (+), Debit decreases (-)
+        if (gl.type === 'Asset' || gl.type === 'Expense') {
+          gl.balance += (entry.debit - entry.credit);
+        } else {
+          gl.balance += (entry.credit - entry.debit);
+        }
+      }
+    });
+
+    this.logAudit('Journal Voucher Posted', 'NightAudit', voucher.id, voucherNumber, `${data.sourceModule}: ${data.narration.substring(0, 50)}... [Debit: ৳${totalDebit.toLocaleString()}]`);
+    notify();
+
+    return {
+      success: true,
+      voucher,
+      message: `Journal Voucher ${voucherNumber} (৳${totalDebit.toLocaleString()}) successfully posted to General Ledger.`
+    };
+  },
+
+  getCityLedgerAccounts(): CityLedgerAccount[] {
+    return state.cityLedgerAccounts || [];
+  },
+
+  createCityLedgerAccount(data: Omit<CityLedgerAccount, 'id' | 'createdAt' | 'currentBalance' | 'accountNumber'> & { accountNumber?: string }): { success: boolean; account?: CityLedgerAccount; message: string } {
+    if (!state.cityLedgerAccounts) state.cityLedgerAccounts = [];
+    const accountNumber = data.accountNumber || `CL-${new Date().getFullYear()}-${String(state.cityLedgerAccounts.length + 1).padStart(3, '0')}`;
+    
+    const account: CityLedgerAccount = {
+      id: `cla-${Date.now()}`,
+      accountNumber,
+      companyName: data.companyName,
+      contactPerson: data.contactPerson,
+      phone: data.phone,
+      email: data.email,
+      creditLimit: data.creditLimit,
+      currentBalance: 0,
+      paymentTerms: data.paymentTerms,
+      status: 'Active',
+      taxNumber: data.taxNumber,
+      address: data.address,
+      notes: data.notes,
+      createdAt: new Date().toISOString()
+    };
+
+    state.cityLedgerAccounts.push(account);
+    this.logAudit('City Ledger Account Created', 'Guest', account.id, accountNumber, `Corporate client ${account.companyName} added with Credit Limit ৳${account.creditLimit.toLocaleString()}`);
+    notify();
+
+    return { success: true, account, message: `Corporate account ${account.companyName} (${accountNumber}) registered.` };
+  },
+
+  updateCityLedgerAccount(id: string, updates: Partial<CityLedgerAccount>): { success: boolean; message: string } {
+    const acc = state.cityLedgerAccounts?.find(a => a.id === id);
+    if (!acc) return { success: false, message: 'City Ledger Account not found.' };
+
+    Object.assign(acc, updates);
+    this.logAudit('City Ledger Account Updated', 'Guest', id, acc.accountNumber, `Corporate credit parameters updated`);
+    notify();
+    return { success: true, message: `Account ${acc.companyName} updated.` };
+  },
+
+  recordCityLedgerPayment(accountId: string, amount: number, method: string, reference: string, notes?: string): { success: boolean; message: string } {
+    const acc = state.cityLedgerAccounts?.find(a => a.id === accountId);
+    if (!acc) return { success: false, message: 'City Ledger Account not found.' };
+
+    if (amount <= 0) return { success: false, message: 'Payment amount must be greater than zero.' };
+
+    acc.currentBalance = Math.max(0, acc.currentBalance - amount);
+    if (acc.currentBalance < acc.creditLimit * 0.9 && acc.status === 'Credit Warning') {
+      acc.status = 'Active';
+    }
+
+    // Auto-create Journal Voucher
+    this.createJournalVoucher({
+      date: state.settings.currentBusinessDate || new Date().toISOString().split('T')[0],
+      sourceModule: 'Cashier Settlement',
+      sourceReference: reference || `CL-PAY-${Date.now()}`,
+      narration: `Corporate settlement received from ${acc.companyName} (${acc.accountNumber}) via ${method}. Ref: ${reference}`,
+      entries: [
+        { id: `jve-${Date.now()}-1`, accountCode: '1010', accountName: 'Cash in Vault & Commercial Bank Accounts', debit: amount, credit: 0, memo: `Receipt from ${acc.companyName}` },
+        { id: `jve-${Date.now()}-2`, accountCode: '1150', accountName: 'City Ledger (Corporate Accounts Receivable)', debit: 0, credit: amount, memo: `AR balance reduction` }
+      ]
+    });
+
+    this.addAlert('success', `City Ledger Payment: ${acc.companyName}`, `Received ৳${amount.toLocaleString()} via ${method}. Outstanding balance: ৳${acc.currentBalance.toLocaleString()}.`, 'Accounting', 'accounting');
+    this.logAudit('City Ledger Payment Received', 'Folio', acc.id, acc.accountNumber, `৳${amount.toLocaleString()} received via ${method}`);
+    notify();
+
+    return {
+      success: true,
+      message: `Payment of ৳${amount.toLocaleString()} successfully recorded for ${acc.companyName}. Current balance is ৳${acc.currentBalance.toLocaleString()}.`
+    };
+  },
+
+  getDepartmentalSyncStatuses(): DepartmentalSyncStatus[] {
+    return state.departmentalSyncs || [];
+  },
+
+  syncDepartmentToGL(department: string): { success: boolean; message: string } {
+    const dept = state.departmentalSyncs?.find(d => d.department === department);
+    if (!dept) return { success: false, message: 'Department not found.' };
+
+    dept.syncStatus = 'In Sync';
+    dept.unmappedCount = 0;
+    dept.syncedCount = dept.totalBills;
+    dept.lastSyncTime = new Date().toISOString();
+
+    this.logAudit('Departmental GL Sync', 'NightAudit', department, dept.glAccountMapping.creditAccount, `${department} transactions reconciled to General Ledger`);
+    this.addAlert('info', `Department Synchronized: ${department}`, `All operational transactions mapped and reconciled to General Ledger.`, 'Accounting', 'accounting');
+    notify();
+
+    return { success: true, message: `${department} successfully synchronized with the General Ledger.` };
   }
 };

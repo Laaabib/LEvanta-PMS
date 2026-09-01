@@ -2,8 +2,23 @@ import {
   User, Guest, GuestDocument, RoomType, Room, Reservation, Stay, Folio, FolioItem,
   Payment, Refund, Invoice, HousekeepingTask, MaintenanceTicket, Hall, EventClient,
   EventBooking, Package, MenuCategory, MenuItem, RestaurantOrder, AuditLog,
-  OperationalAlert, SystemSetting, UserRoleName, RolePermission, NightAuditRecord
+  OperationalAlert, SystemSetting, UserRoleName, RolePermission, NightAuditRecord,
+  GLAccount, JournalVoucher, CityLedgerAccount, DepartmentalSyncStatus, ActivityAmenityCharge,
+  UnitOfMeasure, InventoryCategory, WarehouseStore, Supplier, InventoryItem,
+  InventoryStockByWarehouse, ItemBatchRecord, StockLedgerEntry, PurchaseRequest,
+  PurchaseOrder, GoodsReceiveNote, PurchaseReturn, StockTransfer, StoreIssueConsumption,
+  WastageEntry, PhysicalStockCount, StockAdjustment, ServiceChargeRule, TaxRule,
+  MenuItemEnhanced, Recipe, MenuModifierItem, MenuComboItem, MenuPriceHistory
 } from '../types/pms';
+import {
+  SEED_UOMS, SEED_INVENTORY_CATEGORIES, SEED_WAREHOUSES, SEED_SUPPLIERS,
+  SEED_INVENTORY_ITEMS, SEED_INVENTORY_STOCKS, SEED_BATCHES, SEED_STOCK_LEDGER,
+  SEED_PURCHASE_REQUESTS, SEED_PURCHASE_ORDERS, SEED_GRNS, SEED_PURCHASE_RETURNS,
+  SEED_STOCK_TRANSFERS, SEED_STORE_ISSUES, SEED_WASTAGES, SEED_PHYSICAL_COUNTS,
+  SEED_ADJUSTMENTS, SEED_SERVICE_CHARGE_RULES, SEED_TAX_RULES,
+  SEED_ENHANCED_MENU_ITEMS, SEED_RECIPES, SEED_MENU_MODIFIERS, SEED_MENU_COMBOS,
+  SEED_PRICE_HISTORIES
+} from './mockInventoryData';
 
 const STORAGE_KEY = 'cculb_pms_db_v1';
 
@@ -32,6 +47,36 @@ export interface PmsDatabaseState {
   auditLogs: AuditLog[];
   alerts: OperationalAlert[];
   nightAuditRecords: NightAuditRecord[];
+  glAccounts: GLAccount[];
+  journalVouchers: JournalVoucher[];
+  cityLedgerAccounts: CityLedgerAccount[];
+  departmentalSyncs: DepartmentalSyncStatus[];
+  activityCharges: ActivityAmenityCharge[];
+  // Inventory & Menu Management Collections
+  uoms: UnitOfMeasure[];
+  inventoryCategories: InventoryCategory[];
+  warehouses: WarehouseStore[];
+  suppliers: Supplier[];
+  inventoryItems: InventoryItem[];
+  inventoryStocks: InventoryStockByWarehouse[];
+  itemBatches: ItemBatchRecord[];
+  stockLedgers: StockLedgerEntry[];
+  purchaseRequests: PurchaseRequest[];
+  purchaseOrders: PurchaseOrder[];
+  goodsReceiveNotes: GoodsReceiveNote[];
+  purchaseReturns: PurchaseReturn[];
+  stockTransfers: StockTransfer[];
+  storeIssues: StoreIssueConsumption[];
+  wastages: WastageEntry[];
+  physicalStockCounts: PhysicalStockCount[];
+  stockAdjustments: StockAdjustment[];
+  serviceChargeRules: ServiceChargeRule[];
+  taxRules: TaxRule[];
+  enhancedMenuItems: MenuItemEnhanced[];
+  recipes: Recipe[];
+  menuModifiers: MenuModifierItem[];
+  menuCombos: MenuComboItem[];
+  menuPriceHistories: MenuPriceHistory[];
   settings: SystemSetting;
   currentUser: User;
 }
@@ -516,11 +561,461 @@ const SEED_MENU_ITEMS: MenuItem[] = [
   { id: 'mi-12', categoryId: 'cat-6', categoryName: 'Desserts & Sweet Delights', name: 'Matka Kulfi with Pistachio & Saffron', description: 'Slow cooked condensed milk kulfi infused with Kashmiri saffron in traditional clay pot.', price: 220, active: true }
 ];
 
+export const SEED_GL_ACCOUNTS: GLAccount[] = [
+  // Assets (1000 - 1999)
+  { code: '1010', name: 'Cash in Vault & Commercial Bank Accounts', type: 'Asset', category: 'Current Assets', description: 'Main operational bank balances (Sonali, DBBL, EBL corporate accounts)', balance: 4520000, isSystem: true },
+  { code: '1020', name: 'Front Desk & Outlet Cashier Drawers', type: 'Asset', category: 'Current Assets', description: 'Physical cash float maintained at Front Office, F&B, and POS counters', balance: 85000, isSystem: true },
+  { code: '1100', name: 'Guest Ledger (In-House Active Receivables)', type: 'Asset', category: 'Current Receivables', description: 'Aggregated outstanding balances on open guest folios for active stays', balance: 148250, isSystem: true },
+  { code: '1150', name: 'City Ledger (Corporate Accounts Receivable)', type: 'Asset', category: 'Trade Receivables', description: 'Direct billing receivables from registered corporate clients and credit companies', balance: 385000, isSystem: true },
+  { code: '1200', name: 'Convention & Banquet Event Receivables', type: 'Asset', category: 'Trade Receivables', description: 'Confirmed event booking receivables and convention hall contracts', balance: 185000, isSystem: true },
+
+  // Liabilities (2000 - 2999)
+  { code: '2010', name: 'Guest Advance & Reservation Security Deposits', type: 'Liability', category: 'Current Liabilities', description: 'Prepayments received for future room reservations and event bookings', balance: 265000, isSystem: true },
+  { code: '2100', name: 'VAT / Government Tax Payable (15%)', type: 'Liability', category: 'Statutory Liabilities', description: 'Statutory value added tax collected on accommodation, F&B, and services', balance: 94350, isSystem: true },
+  { code: '2110', name: 'Service Charge Payable (10% Staff Pool)', type: 'Liability', category: 'Operational Liabilities', description: 'Service charge pool collected for employee welfare and operational distribution', balance: 62900, isSystem: true },
+
+  // Equity (3000 - 3999)
+  { code: '3010', name: 'Owners Capital & Retained Earnings', type: 'Equity', category: 'Capital & Reserves', description: 'CCULB member cooperative equity and cumulative retained earnings', balance: 25000000, isSystem: true },
+
+  // Revenue (4000 - 4999)
+  { code: '4010', name: 'Room Accommodation Revenue', type: 'Revenue', category: 'Accommodation', description: 'Gross lodging revenue generated from all room categories and night audit postings', balance: 1450000, isSystem: true },
+  { code: '4020', name: 'Food & Beverage Outlet Sales', type: 'Revenue', category: 'Outlets & Dining', description: 'Revenue from main restaurant, in-room dining, and buffet operations', balance: 420000, isSystem: true },
+  { code: '4030', name: 'Bar & Lounge Revenue', type: 'Revenue', category: 'Outlets & Dining', description: 'Beverages, mocktails, and lounge snack sales', balance: 115000, isSystem: true },
+  { code: '4040', name: 'Convention Halls & Banquet Venue Hire', type: 'Revenue', category: 'Events & Venues', description: 'Grand Ballroom, Executive Conference, and convention hall booking fees', balance: 780000, isSystem: true },
+  { code: '4050', name: 'Resort Activities & Sports Facilities', type: 'Revenue', category: 'Resort Activities', description: 'Swimming pool passes, lawn tennis, boating, archery, and recreation tickets', balance: 95000, isSystem: true },
+  { code: '4060', name: 'Spa & Wellness Center Revenue', type: 'Revenue', category: 'Recreation', description: 'Therapeutic massages, sauna, and wellness packages', balance: 65000, isSystem: true },
+  { code: '4070', name: 'Laundry & Valet Guest Services', type: 'Revenue', category: 'Guest Services', description: 'Express dry cleaning, laundry, and pressing services', balance: 38000, isSystem: true },
+
+  // Expenses (5000 - 5999)
+  { code: '5010', name: 'Housekeeping Linen & Guest Room Supplies', type: 'Expense', category: 'Hotel Operations', description: 'Linen replenishment, toiletries, guest room amenities, and cleaning chemicals', balance: 74000, isSystem: false },
+  { code: '5020', name: 'F&B Kitchen Raw Materials & Consumables', type: 'Expense', category: 'F&B Costs', description: 'Meat, fish, poultry, spices, and perishable kitchen inventory', balance: 185000, isSystem: false },
+  { code: '5030', name: 'Engineering, Facility & Maintenance Repairs', type: 'Expense', category: 'Maintenance', description: 'HVAC repair, plumbing, electrical, and room upkeep costs', balance: 42000, isSystem: false },
+  { code: '5040', name: 'Power, Generator Diesel & Utilities', type: 'Expense', category: 'Utilities', description: 'Electricity grid tariffs, generator fuel, and water utility charges', balance: 125000, isSystem: false }
+];
+
+export const SEED_CITY_LEDGER_ACCOUNTS: CityLedgerAccount[] = [
+  {
+    id: 'cla-1',
+    accountNumber: 'CL-2026-001',
+    companyName: 'Grameenphone Ltd.',
+    contactPerson: 'Syed Ashfaqur Rahman (HR & Admin Manager)',
+    phone: '+880 1711-500100',
+    email: 'corporate.booking@grameenphone.com',
+    creditLimit: 500000,
+    currentBalance: 145000,
+    paymentTerms: 'Net 30',
+    status: 'Active',
+    taxNumber: 'TIN-48291049281',
+    address: 'GPHouse, Bashundhara R/A, Dhaka-1229',
+    notes: 'Approved for direct folio transfer for C-level & Senior Director retreats.',
+    createdAt: '2026-01-15T00:00:00Z'
+  },
+  {
+    id: 'cla-2',
+    accountNumber: 'CL-2026-002',
+    companyName: 'Unilever Bangladesh Limited',
+    contactPerson: 'Tanvir Hasan (Supply Chain Protocol Lead)',
+    phone: '+880 1819-223344',
+    email: 'admin.dhaka@unilever.com',
+    creditLimit: 600000,
+    currentBalance: 95000,
+    paymentTerms: 'Net 30',
+    status: 'Active',
+    taxNumber: 'TIN-10928374612',
+    address: 'ZN Tower, Gulshan-1, Dhaka-1212',
+    notes: 'Standing corporate discount 10% on convention halls and room rack.',
+    createdAt: '2026-02-01T00:00:00Z'
+  },
+  {
+    id: 'cla-3',
+    accountNumber: 'CL-2026-003',
+    companyName: 'CCULB Corporate Credit Union Central',
+    contactPerson: 'Joynal Abedin (Secretary General)',
+    phone: '+880 1713-445566',
+    email: 'admin@cculb.org.bd',
+    creditLimit: 1000000,
+    currentBalance: 85000,
+    paymentTerms: 'Net 45',
+    status: 'Active',
+    taxNumber: 'TIN-99283471029',
+    address: 'CCULB Bhaban, 17/1-C Tejkunipara, Tejgaon, Dhaka',
+    notes: 'Parent cooperative union account. Annual AGM and quarterly retreats.',
+    createdAt: '2026-01-01T00:00:00Z'
+  },
+  {
+    id: 'cla-4',
+    accountNumber: 'CL-2026-004',
+    companyName: 'Beximco Pharmaceuticals Ltd.',
+    contactPerson: 'Dr. Farhana Kabir (Medical Events Coordinator)',
+    phone: '+880 1715-998877',
+    email: 'events.pharma@beximco.net',
+    creditLimit: 400000,
+    currentBalance: 60000,
+    paymentTerms: 'Net 30',
+    status: 'Active',
+    taxNumber: 'TIN-33445566778',
+    address: '19 Dhanmondi R/A, Road 7, Dhaka-1205',
+    notes: 'Physician symposium and weekend clinical round conferences.',
+    createdAt: '2026-03-10T00:00:00Z'
+  },
+  {
+    id: 'cla-5',
+    accountNumber: 'CL-2026-005',
+    companyName: 'BRAC Bank Corporate Division',
+    contactPerson: 'Mahbubur Rahman (Senior VP, Operations)',
+    phone: '+880 1714-332211',
+    email: 'corporate.events@bracbank.com',
+    creditLimit: 500000,
+    currentBalance: 0,
+    paymentTerms: 'Net 15',
+    status: 'Active',
+    taxNumber: 'TIN-77889900112',
+    address: 'Anik Tower, 220/B Tejgaon I/A, Dhaka-1208',
+    notes: 'All dues clear. Eligible for instant credit authorization.',
+    createdAt: '2026-04-05T00:00:00Z'
+  }
+];
+
+export const SEED_DEPARTMENTAL_SYNCS: DepartmentalSyncStatus[] = [
+  {
+    department: 'Front Desk Rooms',
+    totalBills: 18,
+    totalVolume: 182500,
+    syncedCount: 18,
+    unmappedCount: 0,
+    lastSyncTime: '2026-08-31T05:00:00Z',
+    syncStatus: 'In Sync',
+    glAccountMapping: { debitAccount: '1100 (Guest Ledger)', creditAccount: '4010 (Room Revenue)' }
+  },
+  {
+    department: 'Restaurant F&B',
+    totalBills: 34,
+    totalVolume: 48200,
+    syncedCount: 34,
+    unmappedCount: 0,
+    lastSyncTime: '2026-08-31T20:15:00Z',
+    syncStatus: 'In Sync',
+    glAccountMapping: { debitAccount: '1100 (Guest Ledger) / 1020 (Cashier)', creditAccount: '4020 (F&B Sales)' }
+  },
+  {
+    department: 'Bar & Lounge POS',
+    totalBills: 12,
+    totalVolume: 16800,
+    syncedCount: 12,
+    unmappedCount: 0,
+    lastSyncTime: '2026-08-31T20:10:00Z',
+    syncStatus: 'In Sync',
+    glAccountMapping: { debitAccount: '1100 (Guest Ledger) / 1020 (Cashier)', creditAccount: '4030 (Bar Sales)' }
+  },
+  {
+    department: 'Activities & Recreation',
+    totalBills: 15,
+    totalVolume: 22500,
+    syncedCount: 15,
+    unmappedCount: 0,
+    lastSyncTime: '2026-08-31T18:30:00Z',
+    syncStatus: 'In Sync',
+    glAccountMapping: { debitAccount: '1100 (Guest Ledger) / 1020 (Cashier)', creditAccount: '4050 (Activities Revenue)' }
+  },
+  {
+    department: 'Amenities & Spa',
+    totalBills: 8,
+    totalVolume: 18000,
+    syncedCount: 8,
+    unmappedCount: 0,
+    lastSyncTime: '2026-08-31T17:00:00Z',
+    syncStatus: 'In Sync',
+    glAccountMapping: { debitAccount: '1100 (Guest Ledger) / 1020 (Cash)', creditAccount: '4060 (Spa Revenue)' }
+  },
+  {
+    department: 'Banquet & Venues',
+    totalBills: 4,
+    totalVolume: 285000,
+    syncedCount: 4,
+    unmappedCount: 0,
+    lastSyncTime: '2026-08-31T16:00:00Z',
+    syncStatus: 'In Sync',
+    glAccountMapping: { debitAccount: '1200 (Banquet Receivables) / 1010 (Bank)', creditAccount: '4040 (Banquet Venue Hire)' }
+  },
+  {
+    department: 'Payment Cashiers',
+    totalBills: 26,
+    totalVolume: 345000,
+    syncedCount: 26,
+    unmappedCount: 0,
+    lastSyncTime: '2026-08-31T20:30:00Z',
+    syncStatus: 'In Sync',
+    glAccountMapping: { debitAccount: '1010 (Bank) / 1020 (Drawer)', creditAccount: '1100 (Guest Ledger) / 2010 (Deposits)' }
+  }
+];
+
+export const SEED_JOURNAL_VOUCHERS: JournalVoucher[] = [
+  {
+    id: 'jv-1',
+    voucherNumber: 'JV-2026-0081',
+    date: '2026-08-31',
+    sourceModule: 'Front Desk',
+    sourceReference: 'TXN-2026-0901',
+    narration: 'Advance check-in deposit collected via VISA credit card terminal from Engr. Mohammad Rahman (Room 201)',
+    entries: [
+      { id: 'jve-1', accountCode: '1010', accountName: 'Cash in Vault & Commercial Bank Accounts', debit: 15000, credit: 0, memo: 'Card settlement batch #4401' },
+      { id: 'jve-2', accountCode: '2010', accountName: 'Guest Advance & Reservation Security Deposits', debit: 0, credit: 15000, memo: 'Folio FOL-2026-00881 advance' }
+    ],
+    totalDebit: 15000,
+    totalCredit: 15000,
+    isBalanced: true,
+    postedBy: 'Md. Tariqul Islam (Front Desk)',
+    postedAt: '2026-08-31T14:30:00Z'
+  },
+  {
+    id: 'jv-2',
+    voucherNumber: 'JV-2026-0082',
+    date: '2026-08-31',
+    sourceModule: 'Night Audit',
+    sourceReference: 'AUD-20260831-01',
+    narration: '05:00 AM Automated Day-Close room accommodation revenue and statutory tax postings across 4 active occupied rooms',
+    entries: [
+      { id: 'jve-3', accountCode: '1100', accountName: 'Guest Ledger (In-House Active Receivables)', debit: 82500, credit: 0, memo: 'Daily room ledger debit' },
+      { id: 'jve-4', accountCode: '4010', accountName: 'Room Accommodation Revenue', debit: 0, credit: 66000, memo: 'Base room charges' },
+      { id: 'jve-5', accountCode: '2100', accountName: 'VAT / Government Tax Payable (15%)', debit: 0, credit: 9900, memo: 'Govt VAT on lodging' },
+      { id: 'jve-6', accountCode: '2110', accountName: 'Service Charge Payable (10% Staff Pool)', debit: 0, credit: 6600, memo: '10% service charge' }
+    ],
+    totalDebit: 82500,
+    totalCredit: 82500,
+    isBalanced: true,
+    postedBy: 'Automated 05:00 AM Audit Engine',
+    postedAt: '2026-08-31T05:00:00Z'
+  },
+  {
+    id: 'jv-3',
+    voucherNumber: 'JV-2026-0083',
+    date: '2026-08-31',
+    sourceModule: 'Restaurant POS',
+    sourceReference: 'POS-2026-0081',
+    narration: 'Room service dining order posted to in-house Guest Folio FOL-2026-00881 (Room 201)',
+    entries: [
+      { id: 'jve-7', accountCode: '1100', accountName: 'Guest Ledger (In-House Active Receivables)', debit: 2200, credit: 0, memo: 'Room service bill 201' },
+      { id: 'jve-8', accountCode: '4020', accountName: 'Food & Beverage Outlet Sales', debit: 0, credit: 1760, memo: 'Mutton Kacchi & Lemonade' },
+      { id: 'jve-9', accountCode: '2100', accountName: 'VAT / Government Tax Payable (15%)', debit: 0, credit: 264, memo: '15% F&B VAT' },
+      { id: 'jve-10', accountCode: '2110', accountName: 'Service Charge Payable (10% Staff Pool)', debit: 0, credit: 176, memo: '10% F&B service charge' }
+    ],
+    totalDebit: 2200,
+    totalCredit: 2200,
+    isBalanced: true,
+    postedBy: 'Room Service POS Cashier',
+    postedAt: '2026-08-31T19:45:00Z'
+  },
+  {
+    id: 'jv-4',
+    voucherNumber: 'JV-2026-0084',
+    date: '2026-08-31',
+    sourceModule: 'Banquet & Events',
+    sourceReference: 'EVT-2026-0021',
+    narration: 'Advance booking confirmation deposit for Grameenphone Leadership Summit at Grand Padma Ballroom',
+    entries: [
+      { id: 'jve-11', accountCode: '1010', accountName: 'Cash in Vault & Commercial Bank Accounts', debit: 100000, credit: 0, memo: 'Direct bank transfer EBL' },
+      { id: 'jve-12', accountCode: '1200', accountName: 'Convention & Banquet Event Receivables', debit: 0, credit: 100000, memo: 'Advance deposit credit' }
+    ],
+    totalDebit: 100000,
+    totalCredit: 100000,
+    isBalanced: true,
+    postedBy: 'Syed Anisul Haque (Event Manager)',
+    postedAt: '2026-08-31T16:00:00Z'
+  },
+  {
+    id: 'jv-5',
+    voucherNumber: 'JV-2026-0085',
+    date: '2026-08-31',
+    sourceModule: 'Activities',
+    sourceReference: 'ACT-2026-0012',
+    narration: 'Swimming pool and lawn tennis day-pass tickets sold via Front Desk direct payment',
+    entries: [
+      { id: 'jve-13', accountCode: '1020', accountName: 'Front Desk & Outlet Cashier Drawers', debit: 3500, credit: 0, memo: 'Cash collection' },
+      { id: 'jve-14', accountCode: '4050', accountName: 'Resort Activities & Sports Facilities', debit: 0, credit: 3043, memo: 'Pool & Tennis tickets' },
+      { id: 'jve-15', accountCode: '2100', accountName: 'VAT / Government Tax Payable (15%)', debit: 0, credit: 457, memo: 'Activity 15% VAT' }
+    ],
+    totalDebit: 3500,
+    totalCredit: 3500,
+    isBalanced: true,
+    postedBy: 'Front Desk Cashier',
+    postedAt: '2026-08-31T18:15:00Z'
+  }
+];
+
+export const SEED_ACTIVITY_CHARGES: ActivityAmenityCharge[] = [
+  {
+    id: 'act-1',
+    chargeNumber: 'ACT-2026-0001',
+    category: 'Activity',
+    serviceType: 'Swimming Pool Pass',
+    guestOrCustomerName: 'Engr. Mohammad Rahman',
+    roomNumber: '201',
+    stayId: 'sty-1',
+    folioId: 'fol-1',
+    quantity: 2,
+    unitPrice: 500,
+    subtotal: 1000,
+    tax: 150,
+    grandTotal: 1150,
+    paymentType: 'Billed to Room Folio',
+    settlementStatus: 'Posted to Folio',
+    notes: 'Adult swimming pool wristband passes issued',
+    createdAt: '2026-08-31T15:30:00Z',
+    createdBy: 'Pool Attendant'
+  },
+  {
+    id: 'act-2',
+    chargeNumber: 'ACT-2026-0002',
+    category: 'Activity',
+    serviceType: 'Lawn Tennis',
+    guestOrCustomerName: 'Dr. Nusrat Jahan',
+    roomNumber: '102',
+    stayId: 'sty-2',
+    folioId: 'fol-2',
+    quantity: 1,
+    unitPrice: 1200,
+    subtotal: 1200,
+    tax: 180,
+    grandTotal: 1380,
+    paymentType: 'Billed to Room Folio',
+    settlementStatus: 'Posted to Folio',
+    notes: '1 Hour floodlit lawn tennis court rental + rackets',
+    createdAt: '2026-08-31T17:00:00Z',
+    createdBy: 'Sports Coordinator'
+  },
+  {
+    id: 'act-3',
+    chargeNumber: 'ACT-2026-0003',
+    category: 'Activity',
+    serviceType: 'Boating & Water Sports',
+    guestOrCustomerName: 'Mr. Tareq Al-Hasan (Day Visitor)',
+    quantity: 2,
+    unitPrice: 750,
+    subtotal: 1500,
+    tax: 225,
+    grandTotal: 1725,
+    paymentType: 'Cash Direct',
+    settlementStatus: 'Settled Direct',
+    notes: 'Paddle boat 45-minute river lake cruise',
+    createdAt: '2026-08-31T16:15:00Z',
+    createdBy: 'Boating Deck Staff'
+  },
+  {
+    id: 'act-4',
+    chargeNumber: 'ACT-2026-0004',
+    category: 'Activity',
+    serviceType: 'Archery Field',
+    guestOrCustomerName: 'Sabbir Ahmed (Club Member)',
+    quantity: 1,
+    unitPrice: 800,
+    subtotal: 800,
+    tax: 120,
+    grandTotal: 920,
+    paymentType: 'bKash MFS',
+    settlementStatus: 'Settled Direct',
+    notes: '20-arrow archery target practice with instructor',
+    createdAt: '2026-08-31T16:45:00Z',
+    createdBy: 'Archery Range Master'
+  },
+  {
+    id: 'act-5',
+    chargeNumber: 'ACT-2026-0005',
+    category: 'Amenity',
+    serviceType: 'Spa & Massage',
+    guestOrCustomerName: 'Barrister Anisul Islam',
+    roomNumber: '301',
+    stayId: 'sty-3',
+    folioId: 'fol-3',
+    quantity: 1,
+    unitPrice: 3500,
+    subtotal: 3500,
+    tax: 525,
+    grandTotal: 4025,
+    paymentType: 'Billed to Room Folio',
+    settlementStatus: 'Posted to Folio',
+    notes: '60-minute Swedish aromatherapy relaxing body massage',
+    createdAt: '2026-08-31T18:00:00Z',
+    createdBy: 'Spa Receptionist'
+  },
+  {
+    id: 'act-6',
+    chargeNumber: 'ACT-2026-0006',
+    category: 'Amenity',
+    serviceType: 'Laundry & Dry Cleaning',
+    guestOrCustomerName: 'Engr. Mohammad Rahman',
+    roomNumber: '201',
+    stayId: 'sty-1',
+    folioId: 'fol-1',
+    quantity: 4,
+    unitPrice: 150,
+    subtotal: 600,
+    tax: 90,
+    grandTotal: 690,
+    paymentType: 'Billed to Room Folio',
+    settlementStatus: 'Posted to Folio',
+    notes: '2 Formal Shirts + 2 Trousers express press and laundry',
+    createdAt: '2026-08-31T11:30:00Z',
+    createdBy: 'Laundry Supervisor'
+  },
+  {
+    id: 'act-7',
+    chargeNumber: 'ACT-2026-0007',
+    category: 'Amenity',
+    serviceType: 'Airport Shuttle',
+    guestOrCustomerName: 'Michael Vance',
+    roomNumber: '304',
+    stayId: 'sty-5',
+    folioId: 'fol-5',
+    quantity: 1,
+    unitPrice: 2500,
+    subtotal: 2500,
+    tax: 375,
+    grandTotal: 2875,
+    paymentType: 'Billed to Room Folio',
+    settlementStatus: 'Posted to Folio',
+    notes: 'Hazrat Shahjalal Int. Airport pickup in Toyota Noah AC Van',
+    createdAt: '2026-08-31T09:00:00Z',
+    createdBy: 'Concierge Transport'
+  }
+];
+
 export function getInitialDatabase(): PmsDatabaseState {
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved) {
     try {
-      return JSON.parse(saved);
+      const parsed = JSON.parse(saved);
+      // Ensure newly added structures are populated if missing in saved storage
+      if (!parsed.glAccounts || parsed.glAccounts.length === 0) parsed.glAccounts = SEED_GL_ACCOUNTS;
+      if (!parsed.journalVouchers || parsed.journalVouchers.length === 0) parsed.journalVouchers = SEED_JOURNAL_VOUCHERS;
+      if (!parsed.cityLedgerAccounts || parsed.cityLedgerAccounts.length === 0) parsed.cityLedgerAccounts = SEED_CITY_LEDGER_ACCOUNTS;
+      if (!parsed.departmentalSyncs || parsed.departmentalSyncs.length === 0) parsed.departmentalSyncs = SEED_DEPARTMENTAL_SYNCS;
+      if (!parsed.activityCharges || parsed.activityCharges.length === 0) parsed.activityCharges = SEED_ACTIVITY_CHARGES;
+      // Inventory & Menu Collections Initializer
+      if (!parsed.uoms || parsed.uoms.length === 0) parsed.uoms = SEED_UOMS;
+      if (!parsed.inventoryCategories || parsed.inventoryCategories.length === 0) parsed.inventoryCategories = SEED_INVENTORY_CATEGORIES;
+      if (!parsed.warehouses || parsed.warehouses.length === 0) parsed.warehouses = SEED_WAREHOUSES;
+      if (!parsed.suppliers || parsed.suppliers.length === 0) parsed.suppliers = SEED_SUPPLIERS;
+      if (!parsed.inventoryItems || parsed.inventoryItems.length === 0) parsed.inventoryItems = SEED_INVENTORY_ITEMS;
+      if (!parsed.inventoryStocks || parsed.inventoryStocks.length === 0) parsed.inventoryStocks = SEED_INVENTORY_STOCKS;
+      if (!parsed.itemBatches || parsed.itemBatches.length === 0) parsed.itemBatches = SEED_BATCHES;
+      if (!parsed.stockLedgers || parsed.stockLedgers.length === 0) parsed.stockLedgers = SEED_STOCK_LEDGER;
+      if (!parsed.purchaseRequests || parsed.purchaseRequests.length === 0) parsed.purchaseRequests = SEED_PURCHASE_REQUESTS;
+      if (!parsed.purchaseOrders || parsed.purchaseOrders.length === 0) parsed.purchaseOrders = SEED_PURCHASE_ORDERS;
+      if (!parsed.goodsReceiveNotes || parsed.goodsReceiveNotes.length === 0) parsed.goodsReceiveNotes = SEED_GRNS;
+      if (!parsed.purchaseReturns) parsed.purchaseReturns = SEED_PURCHASE_RETURNS;
+      if (!parsed.stockTransfers || parsed.stockTransfers.length === 0) parsed.stockTransfers = SEED_STOCK_TRANSFERS;
+      if (!parsed.storeIssues || parsed.storeIssues.length === 0) parsed.storeIssues = SEED_STORE_ISSUES;
+      if (!parsed.wastages || parsed.wastages.length === 0) parsed.wastages = SEED_WASTAGES;
+      if (!parsed.physicalStockCounts || parsed.physicalStockCounts.length === 0) parsed.physicalStockCounts = SEED_PHYSICAL_COUNTS;
+      if (!parsed.stockAdjustments || parsed.stockAdjustments.length === 0) parsed.stockAdjustments = SEED_ADJUSTMENTS;
+      if (!parsed.serviceChargeRules || parsed.serviceChargeRules.length === 0) parsed.serviceChargeRules = SEED_SERVICE_CHARGE_RULES;
+      if (!parsed.taxRules || parsed.taxRules.length === 0) parsed.taxRules = SEED_TAX_RULES;
+      if (!parsed.enhancedMenuItems || parsed.enhancedMenuItems.length === 0) parsed.enhancedMenuItems = SEED_ENHANCED_MENU_ITEMS;
+      if (!parsed.recipes || parsed.recipes.length === 0) parsed.recipes = SEED_RECIPES;
+      if (!parsed.menuModifiers || parsed.menuModifiers.length === 0) parsed.menuModifiers = SEED_MENU_MODIFIERS;
+      if (!parsed.menuCombos || parsed.menuCombos.length === 0) parsed.menuCombos = SEED_MENU_COMBOS;
+      if (!parsed.menuPriceHistories || parsed.menuPriceHistories.length === 0) parsed.menuPriceHistories = SEED_PRICE_HISTORIES;
+      return parsed;
     } catch {
       console.warn('Could not parse saved DB, resetting to defaults');
     }
@@ -1697,6 +2192,35 @@ export function getInitialDatabase(): PmsDatabaseState {
     auditLogs,
     alerts,
     nightAuditRecords: seedNightAuditRecords,
+    glAccounts: SEED_GL_ACCOUNTS,
+    journalVouchers: SEED_JOURNAL_VOUCHERS,
+    cityLedgerAccounts: SEED_CITY_LEDGER_ACCOUNTS,
+    departmentalSyncs: SEED_DEPARTMENTAL_SYNCS,
+    activityCharges: SEED_ACTIVITY_CHARGES,
+    uoms: SEED_UOMS,
+    inventoryCategories: SEED_INVENTORY_CATEGORIES,
+    warehouses: SEED_WAREHOUSES,
+    suppliers: SEED_SUPPLIERS,
+    inventoryItems: SEED_INVENTORY_ITEMS,
+    inventoryStocks: SEED_INVENTORY_STOCKS,
+    itemBatches: SEED_BATCHES,
+    stockLedgers: SEED_STOCK_LEDGER,
+    purchaseRequests: SEED_PURCHASE_REQUESTS,
+    purchaseOrders: SEED_PURCHASE_ORDERS,
+    goodsReceiveNotes: SEED_GRNS,
+    purchaseReturns: SEED_PURCHASE_RETURNS,
+    stockTransfers: SEED_STOCK_TRANSFERS,
+    storeIssues: SEED_STORE_ISSUES,
+    wastages: SEED_WASTAGES,
+    physicalStockCounts: SEED_PHYSICAL_COUNTS,
+    stockAdjustments: SEED_ADJUSTMENTS,
+    serviceChargeRules: SEED_SERVICE_CHARGE_RULES,
+    taxRules: SEED_TAX_RULES,
+    enhancedMenuItems: SEED_ENHANCED_MENU_ITEMS,
+    recipes: SEED_RECIPES,
+    menuModifiers: SEED_MENU_MODIFIERS,
+    menuCombos: SEED_MENU_COMBOS,
+    menuPriceHistories: SEED_PRICE_HISTORIES,
     settings: DEFAULT_SETTINGS,
     currentUser: SEED_USERS[0]
   };

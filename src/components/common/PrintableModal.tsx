@@ -46,10 +46,19 @@ function numberToWordsBDT(num: number): string {
 
 export const PrintableModal: React.FC<PrintableModalProps> = (props) => {
   const { isOpen, onClose } = props;
-  const docType = (props.documentType || props.type || 'invoice') as PrintableDocumentType;
+  const initialDocType = (props.documentType || props.type || 'invoice') as PrintableDocumentType;
+  const [activeDocType, setActiveDocType] = React.useState<PrintableDocumentType>(initialDocType);
   const rawData = props.data || {};
 
+  React.useEffect(() => {
+    if (props.documentType || props.type) {
+      setActiveDocType((props.documentType || props.type) as PrintableDocumentType);
+    }
+  }, [props.documentType, props.type, isOpen]);
+
   if (!isOpen) return null;
+
+  const docType = activeDocType;
 
   const handlePrint = () => {
     window.print();
@@ -80,6 +89,66 @@ export const PrintableModal: React.FC<PrintableModalProps> = (props) => {
   if (rawData) {
     if ('invoiceNumber' in rawData) invoice = rawData as Invoice;
     else if (rawData.invoice) invoice = rawData.invoice;
+    else if ('orderNumber' in rawData) {
+      // Auto-adapt RestaurantOrder into an Invoice view
+      const o = rawData;
+      const vat = Math.round(o.subtotal * 0.15);
+      const srv = Math.round(o.subtotal * 0.10);
+      invoice = {
+        id: o.id,
+        invoiceNumber: `INV-${o.orderNumber}`,
+        folioId: o.folioId,
+        guestOrClientName: o.guestName || 'Restaurant Guest',
+        roomOrHall: o.roomNumber ? `Room ${o.roomNumber}` : (o.tableNumber ? `Table ${o.tableNumber}` : (o.orderType === 'bar-lounge' ? 'Bar & Lounge Tab' : 'Takeaway / Outlets')),
+        dates: `Date: ${o.createdAt ? o.createdAt.split('T')[0] : new Date().toISOString().split('T')[0]}`,
+        stayOrEventDetails: `${o.orderType === 'in-room-dining' ? 'In-Room Dining POS' : o.orderType === 'bar-lounge' ? 'Bar & Lounge Tab' : 'Restaurant Dining POS'} • ${o.paymentMethod || 'Direct Payment'}`,
+        items: (o.items || []).map((i: any) => ({
+          description: i.name,
+          quantity: i.quantity,
+          unitPrice: i.unitPrice,
+          total: i.totalPrice || (i.unitPrice * i.quantity)
+        })),
+        subtotal: o.subtotal,
+        discount: 0,
+        serviceCharge: srv,
+        tax: o.tax || vat,
+        grandTotal: o.total,
+        paidAmount: o.paymentStatus === 'Paid-Direct' ? o.total : 0,
+        balance: o.paymentStatus === 'Billed-To-Room' ? o.total : 0,
+        status: o.paymentStatus === 'Paid-Direct' ? 'Paid' : 'Issued',
+        issuedAt: o.createdAt || new Date().toISOString(),
+        issuedBy: 'F&B Cashier / Duty Captain'
+      };
+    }
+    else if ('chargeNumber' in rawData) {
+      // Auto-adapt ActivityAmenityCharge into an Invoice view
+      const c = rawData;
+      invoice = {
+        id: c.id,
+        invoiceNumber: `INV-${c.chargeNumber}`,
+        folioId: c.folioId,
+        guestOrClientName: c.guestOrCustomerName || 'Resort Guest',
+        roomOrHall: c.roomNumber ? `Room ${c.roomNumber}` : 'Recreation / Amenity Counter',
+        dates: `Date: ${c.createdAt ? c.createdAt.split('T')[0] : new Date().toISOString().split('T')[0]}`,
+        stayOrEventDetails: `${c.category}: ${c.serviceType} • ${c.paymentType}`,
+        items: [{
+          description: `${c.serviceType} (${c.category})`,
+          quantity: c.quantity,
+          unitPrice: c.unitPrice,
+          total: c.subtotal
+        }],
+        subtotal: c.subtotal,
+        discount: 0,
+        serviceCharge: 0,
+        tax: c.tax,
+        grandTotal: c.grandTotal,
+        paidAmount: c.settlementStatus === 'Paid Direct' ? c.grandTotal : 0,
+        balance: c.settlementStatus === 'Posted to Room' ? c.grandTotal : 0,
+        status: c.settlementStatus === 'Paid Direct' ? 'Paid' : 'Issued',
+        issuedAt: c.createdAt || new Date().toISOString(),
+        issuedBy: c.createdBy || 'Duty Activity Supervisor'
+      };
+    }
     else if ('folioNumber' in rawData && docType === 'invoice') {
       // Auto-adapt Folio into an Invoice view
       const f = rawData as Folio;
@@ -152,20 +221,71 @@ export const PrintableModal: React.FC<PrintableModalProps> = (props) => {
       <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-3xl w-full max-h-[94vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         
         {/* Top Control Bar (Hidden on print) */}
-        <div className="p-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between no-print">
+        <div className="p-3 bg-slate-950 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 no-print">
           <div className="flex items-center space-x-2">
             <FileText className="w-4 h-4 text-amber-400" />
             <span className="text-xs font-bold text-slate-200 uppercase tracking-wide">
               Document Preview & Print — {getDocTitle()}
             </span>
           </div>
-          <div className="flex items-center space-x-2">
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Quick format switchers if stay or folio is available */}
+            {(stay || folio || invoice) && (
+              <div className="flex items-center bg-slate-900 border border-slate-800 rounded-lg p-0.5 text-[10px]">
+                {(invoice || folio) && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveDocType('invoice')}
+                    className={`px-2 py-1 rounded font-medium transition ${
+                      activeDocType === 'invoice' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Tax Invoice
+                  </button>
+                )}
+                {(stay || folio) && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveDocType('checkout-form')}
+                    className={`px-2 py-1 rounded font-medium transition ${
+                      activeDocType === 'checkout-form' ? 'bg-rose-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Check-out Slip
+                  </button>
+                )}
+                {folio && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveDocType('folio')}
+                    className={`px-2 py-1 rounded font-medium transition ${
+                      activeDocType === 'folio' ? 'bg-slate-700 text-slate-100 font-bold' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Master Folio
+                  </button>
+                )}
+                {stay && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveDocType('registration-card')}
+                    className={`px-2 py-1 rounded font-medium transition ${
+                      activeDocType === 'registration-card' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Reg Card
+                  </button>
+                )}
+              </div>
+            )}
+
             <button
               onClick={handlePrint}
               className="flex items-center space-x-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded transition-colors shadow"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>Print Document (Ctrl+P)</span>
+              <span>Print (Ctrl+P)</span>
             </button>
             <button
               onClick={onClose}

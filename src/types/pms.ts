@@ -1,3 +1,5 @@
+export * from './inventoryMenu';
+
 export type OperationalStatus = 
   | 'Available' 
   | 'Reserved' 
@@ -88,6 +90,8 @@ export type UserRoleName =
   | 'Maintenance' 
   | 'Event Manager' 
   | 'Restaurant Staff' 
+  | 'POS Cashier'
+  | 'POS User'
   | 'Management';
 
 export interface User {
@@ -99,6 +103,91 @@ export interface User {
   avatar?: string;
   phone?: string;
   createdAt: string;
+}
+
+export type AccountCategory = 'Asset' | 'Liability' | 'Equity' | 'Revenue' | 'Expense';
+
+export interface GLAccount {
+  code: string;
+  name: string;
+  type: AccountCategory;
+  category: string;
+  description: string;
+  balance: number;
+  isSystem: boolean;
+}
+
+export interface JournalEntryItem {
+  id: string;
+  accountCode: string;
+  accountName: string;
+  debit: number;
+  credit: number;
+  memo?: string;
+}
+
+export interface JournalVoucher {
+  id: string;
+  voucherNumber: string;
+  date: string;
+  sourceModule: 'Front Desk' | 'Restaurant POS' | 'Bar POS' | 'Activities' | 'Amenities' | 'Banquet & Events' | 'Cashier Settlement' | 'Night Audit' | 'Manual Adjustment' | 'Inventory GRN' | 'Inventory Wastage' | 'Inventory Consumption' | 'Inventory Audit';
+  sourceReference: string;
+  narration: string;
+  entries: JournalEntryItem[];
+  totalDebit: number;
+  totalCredit: number;
+  isBalanced: boolean;
+  postedBy: string;
+  postedAt: string;
+}
+
+export interface CityLedgerAccount {
+  id: string;
+  accountNumber: string;
+  companyName: string;
+  contactPerson: string;
+  phone: string;
+  email: string;
+  creditLimit: number;
+  currentBalance: number;
+  paymentTerms: 'Immediate' | 'Net 15' | 'Net 30' | 'Net 45' | 'Net 60';
+  status: 'Active' | 'Credit Warning' | 'Suspended';
+  taxNumber?: string;
+  address?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface DepartmentalSyncStatus {
+  department: 'Front Desk Rooms' | 'Restaurant F&B' | 'Bar & Lounge POS' | 'Activities & Recreation' | 'Amenities & Spa' | 'Banquet & Venues' | 'Payment Cashiers';
+  totalBills: number;
+  totalVolume: number;
+  syncedCount: number;
+  unmappedCount: number;
+  lastSyncTime: string;
+  syncStatus: 'In Sync' | 'Pending Sync' | 'Syncing';
+  glAccountMapping: { debitAccount: string; creditAccount: string };
+}
+
+export interface ActivityAmenityCharge {
+  id: string;
+  chargeNumber: string;
+  category: 'Activity' | 'Amenity';
+  serviceType: 'Swimming Pool Pass' | 'Lawn Tennis' | 'Boating & Water Sports' | 'Archery Field' | 'Gym Pass' | 'Kids Zone' | 'Spa & Massage' | 'Laundry & Dry Cleaning' | 'Airport Shuttle' | 'Minibar Consumption' | 'Other Service';
+  guestOrCustomerName: string;
+  roomNumber?: string;
+  stayId?: string;
+  folioId?: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+  tax: number;
+  grandTotal: number;
+  paymentType: 'Billed to Room Folio' | 'Cash Direct' | 'Credit Card' | 'bKash MFS';
+  settlementStatus: 'Posted to Folio' | 'Settled Direct' | 'Pending';
+  notes?: string;
+  createdAt: string;
+  createdBy: string;
 }
 
 export interface RolePermission {
